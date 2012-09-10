@@ -2,17 +2,17 @@
 /**
  * Copyright (c) 2012, Rakuten Deutschland GmbH. All rights reserved.
  *
- *	Redistribution and use in source and binary forms, with or without
- *	modification, are permitted provided that the following conditions are met:
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
  *
- * 	 * Redistributions of source code must retain the above copyright
- *  	   notice, this list of conditions and the following disclaimer.
- * 	 * Redistributions in binary form must reproduce the above copyright
- *   	   notice, this list of conditions and the following disclaimer in the
- *   	   documentation and/or other materials provided with the distribution.
- * 	 * Neither the name of the Rakuten Deutschland GmbH nor the
- *   	   names of its contributors may be used to endorse or promote products
- *   	   derived from this software without specific prior written permission.
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above copyright
+ *       notice, this list of conditions and the following disclaimer in the
+ *       documentation and/or other materials provided with the distribution.
+ *     * Neither the name of the Rakuten Deutschland GmbH nor the
+ *       names of its contributors may be used to endorse or promote products
+ *       derived from this software without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
  * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
@@ -29,7 +29,7 @@ if (!function_exists('xtc_get_zone_code')) {
 
 class rakuten_checkout
 {
-    const VERSION               = '1.0.4';
+    const VERSION               = '1.0.6';
 
     const ROCKIN_SANDBOX_URL    = 'https://sandbox.rakuten-checkout.de/rockin';
     const ROCKIN_LIVE_URL       = 'https://secure.rakuten-checkout.de/rockin';
@@ -118,21 +118,28 @@ class rakuten_checkout
 
     function _escape_str($string)
     {
-        $string = mb_convert_encoding($string, 'UTF-8');
+        $string = mb_convert_encoding($string, 'UTF-8', 'auto');
         $string = str_replace('&', '&amp;', $string);
+        return $string;
+    }
+
+    function _escape_str_revert($string)
+    {
+        $string = mb_convert_encoding($string, $_SESSION['language_charset'], 'auto');
+        $string = str_replace('&amp;', '&', $string);
         return $string;
     }
 
     function _add_CDATA($node, $value)
     {
-        $value = mb_convert_encoding($value, 'UTF-8');
+        $value = mb_convert_encoding($value, 'UTF-8', 'auto');
         $domNode = dom_import_simplexml($node);
         $domDoc = $domNode->ownerDocument;
         $domNode->appendChild($domDoc->createCDATASection($value));
     }
 
     function get_redirect_url($inline = false)
-    {        
+    {
         /** 
          * Create Rakuten Checkout Insert Cart XML request 
          **/
@@ -210,7 +217,7 @@ class rakuten_checkout
         $shippingRates = $this->_str_get_csv(MODULE_PAYMENT_RAKUTEN_SHIPPING_RATES);
 
         foreach ($shippingRates as $shippingRate) {
-            if (isset($shippingRate[0]) && isset($shippingRate[1]) && is_numeric($shippingRate[1])) {              
+            if (isset($shippingRate[0]) && isset($shippingRate[1]) && is_numeric($shippingRate[1])) {
                 $merchantCartShippingRate = $merchantCartShippingRates->addChild('shipping_rate');
                 $merchantCartShippingRate->addChild('country', (string)$shippingRate[0]);
                 $merchantCartShippingRate->addChild('price', (float)$shippingRate[1]);
@@ -240,7 +247,7 @@ class rakuten_checkout
                 $billingAddressRestrictions->addChild('customer_type')->addAttribute('allow', 3);
                 break;
         }
-        
+
         $xml->addChild('callback_url', $this->ROCKBACK_URL);
         $xml->addChild('pipe_url', $this->PIPE_URL);
 
@@ -262,7 +269,7 @@ class rakuten_checkout
                 $inlineCode = $response->inline_code;
             }
         } catch (Exception $e) {
-            xtc_redirect(sprintf($this->ERROR_URL, urlencode($e->getCode()), urlencode($e->getMessage())));          
+            xtc_redirect(sprintf($this->ERROR_URL, urlencode($e->getCode()), urlencode($e->getMessage())));
         }
 
         if ($inline) {
@@ -359,14 +366,14 @@ class rakuten_checkout
 
             if(curl_errno($ch)) {
                 $_SESSION['curl_error_no'] = curl_errno($ch) ;
-                $_SESSION['curl_error_msg'] = curl_error($ch);            
+                $_SESSION['curl_error_msg'] = curl_error($ch);
             } else {
                 /** 
                  * closing the curl
                  */
                 curl_close($ch);
             }
-        } catch (Exception $e) {            
+        } catch (Exception $e) {
             throw $e;
         }
         return $response;
@@ -401,7 +408,7 @@ class rakuten_checkout
 
     function process_rope_request($request)
     {
-       
+        // $this->_request = $request;
         try {
             $this->_request = new SimpleXMLElement(urldecode($request), LIBXML_NOCDATA);
 
@@ -467,7 +474,7 @@ class rakuten_checkout
 
             $response = $this->{$this->_process_function}();
 
-        } catch (Exception $e) {           
+        } catch (Exception $e) {
             return $this->prepare_response(false);
         }
 
@@ -508,7 +515,7 @@ class rakuten_checkout
 
     function _process_order()
     {
-        try {            
+        try {
             if (isset ($_SESSION['cart']->cartID) && isset ($_SESSION['cartID'])) {
                 if ($_SESSION['cart']->cartID != $_SESSION['cartID']) {
                     return false;
@@ -526,19 +533,26 @@ class rakuten_checkout
 
             $customers_ip = $_SESSION['user_info']['user_ip'];
             $comments = '';
-            
+
             if (trim((string)$this->_request->comment_client) != '') {
-                $comments .= sprintf('Customer\'s Comment: %s',  trim((string)$this->_request->comment_client) . "\n");
+                $comments .= sprintf('Customer\'s Comment: %s', /* '<strong>' . */ trim((string)$this->_request->comment_client) . "\n" /* . '</strong><br />' */ );
             }
 
-            $comments .= sprintf('Rakuten Order No: %s', (string)$this->_request->order_no . "\n")
-                        . sprintf('Rakuten Client ID: %s', (string)$this->_request->client->client_id . "\n");
+            $comments .= sprintf('Rakuten Order No: %s', /* '<strong>' . */ (string)$this->_request->order_no . "\n" /* . '</strong><br />' */ )
+                        . sprintf('Rakuten Client ID: %s', /* '<strong>' . */ (string)$this->_request->client->client_id . "\n" /* . '</strong><br />' */ );
 
             $order->info['comments'] = $comments;
 
             $order->info['rakuten_order_no'] = (string)$this->_request->order_no;
 
             $billing_addr = $this->_request->client;
+
+            $order->customer['email_address'] = (string)$billing_addr->email;
+
+            $order->customer['firstname']     = $this->_escape_str_revert((string)$billing_addr->first_name);
+            $order->customer['lastname']      = $this->_escape_str_revert((string)$billing_addr->last_name);
+
+            $order->customer['telephone']     = (string)$billing_addr->phone;
 
             $billing_country_result = xtc_db_query("SELECT countries_id, countries_name from " . TABLE_COUNTRIES . " WHERE countries_iso_code_2 = '" . (string)$billing_addr->country . "' ");
             if (xtc_db_num_rows($billing_country_result)) {
@@ -548,14 +562,14 @@ class rakuten_checkout
                 $billing_country['countries_name'] = (string)$billing_addr->country;
             }
 
-            $order->billing['firstname'] = (string)$billing_addr->first_name;
-            $order->billing['lastname'] = (string)$billing_addr->last_name;
-            $order->billing['company'] = (string)$billing_addr->company;
-            $order->billing['street_address'] = (string)$billing_addr->street . " " . (string)$billing_addr->street_no . ((string)$billing_addr->address_add ? '<br />'.(string)$billing_addr->address_add : '');
-            $order->billing['city'] = (string)$billing_addr->city;
-            $order->billing['postcode'] = (string)$billing_addr->zip_code;
+            $order->billing['firstname'] = $this->_escape_str_revert((string)$billing_addr->first_name);
+            $order->billing['lastname'] = $this->_escape_str_revert((string)$billing_addr->last_name);
+            $order->billing['company'] = $this->_escape_str_revert((string)$billing_addr->company);
+            $order->billing['street_address'] = $this->_escape_str_revert((string)$billing_addr->street . " " . (string)$billing_addr->street_no . ((string)$billing_addr->address_add ? '<br />'.(string)$billing_addr->address_add : ''));
+            $order->billing['city'] = $this->_escape_str_revert((string)$billing_addr->city);
+            $order->billing['postcode'] = $this->_escape_str_revert((string)$billing_addr->zip_code);
             $order->billing['country']['title'] = $billing_country['countries_name'];
-            $order->billing['country']['iso_code_2'] = (string)$billing_addr->country;
+            $order->billing['country']['iso_code_2'] = (string)$billing_addr->country; // TODO: verify that code is correct for xtc!
             $order->billing['format_id'] = '5';
 
             $shipping_addr = $this->_request->delivery_address;
@@ -568,14 +582,14 @@ class rakuten_checkout
                 $shipping_country['countries_name'] = (string)$shipping_addr->country;
             }
 
-            $order->delivery['firstname'] = (string)$shipping_addr->first_name;
-            $order->delivery['lastname'] = (string)$shipping_addr->last_name;
-            $order->delivery['company'] = (string)$shipping_addr->company;
-            $order->delivery['street_address'] = (string)$shipping_addr->street . " " . (string)$shipping_addr->street_no . ((string)$shipping_addr->address_add ? '<br />'.(string)$shipping_addr->address_add : '');
-            $order->delivery['city'] = (string)$shipping_addr->city;
-            $order->delivery['postcode'] = (string)$shipping_addr->zip_code;
+            $order->delivery['firstname'] = $this->_escape_str_revert((string)$shipping_addr->first_name);
+            $order->delivery['lastname'] = $this->_escape_str_revert((string)$shipping_addr->last_name);
+            $order->delivery['company'] = $this->_escape_str_revert((string)$shipping_addr->company);
+            $order->delivery['street_address'] = $this->_escape_str_revert((string)$shipping_addr->street . " " . (string)$shipping_addr->street_no . ((string)$shipping_addr->address_add ? '<br />'.(string)$shipping_addr->address_add : ''));
+            $order->delivery['city'] = $this->_escape_str_revert((string)$shipping_addr->city);
+            $order->delivery['postcode'] = $this->_escape_str_revert((string)$shipping_addr->zip_code);
             $order->delivery['country']['title'] = $shipping_country['countries_name'];
-            $order->delivery['country']['iso_code_2'] = (string)$shipping_addr->country;
+            $order->delivery['country']['iso_code_2'] = (string)$shipping_addr->country; // TODO: verify that code is correct for xtc!
             $order->delivery['format_id'] = '5';
 
             $order->info['payment_method'] = 'rakuten';
@@ -668,7 +682,7 @@ class rakuten_checkout
 
             $sql_data_array = array('orders_id' => $insert_id,
                                     'title' => MODULE_PAYMENT_RAKUTEN_SHIPPING . ':',
-                                    'text' => ' ' . sprintf("%01.2f EUR", (float)$this->_request->shipping),
+                                    'text' => ' ' . sprintf("%01.2f EUR", (float)$this->_request->shipping), // TODO: format currency
                                     'value' => (float)$this->_request->shipping,
                                     'class' => 'ot_shipping',
                                     'sort_order' => 30);
@@ -676,7 +690,7 @@ class rakuten_checkout
 
             $sql_data_array = array('orders_id' => $insert_id,
                                     'title' => MODULE_PAYMENT_RAKUTEN_TAX . ':',
-                                    'text' => ' ' . sprintf("%01.2f EUR", (float)$this->_request->total_tax_amount),
+                                    'text' => ' ' . sprintf("%01.2f EUR", (float)$this->_request->total_tax_amount), // TODO: format currency
                                     'value' => (float)$this->_request->total_tax_amount,
                                     'class' => 'ot_tax',
                                     'sort_order' => 97);
@@ -684,7 +698,7 @@ class rakuten_checkout
 
             $sql_data_array = array('orders_id' => $insert_id,
                                     'title' => MODULE_PAYMENT_RAKUTEN_TOTAL . ':',
-                                    'text' => sprintf("<b> %01.2f EUR</b>", (float)$this->_request->total),
+                                    'text' => sprintf("<b> %01.2f EUR</b>", (float)$this->_request->total), // TODO: format currency
                                     'value' => (float)$this->_request->total,
                                     'class' => 'ot_total',
                                     'sort_order' => 99);
@@ -699,7 +713,7 @@ class rakuten_checkout
                  *  Stock Update - Joao Correia
                  */
                 if (STOCK_LIMITED == 'true') {
-                    if (DOWNLOAD_ENABLED == 'true') {                      
+                    if (DOWNLOAD_ENABLED == 'true') {
                         $stock_query_raw = "SELECT p.products_quantity, pad.products_attributes_filename
                                                     FROM " . TABLE_PRODUCTS . " p
                                                     LEFT JOIN " . TABLE_PRODUCTS_ATTRIBUTES . " pa
@@ -707,7 +721,7 @@ class rakuten_checkout
                                                     LEFT JOIN " . TABLE_PRODUCTS_ATTRIBUTES_DOWNLOAD . " pad
                                                      ON pa.products_attributes_id=pad.products_attributes_id
                                                     WHERE p.products_id = '" . xtc_get_prid($order->products[$i]['id']) . "'";
-                        
+
                         $products_attributes = $order->products[$i]['attributes'];
                         if (is_array($products_attributes)) {
                             $stock_query_raw .= " AND pa.options_id = '" . $products_attributes[0]['option_id'] . "' AND pa.options_values_id = '" . $products_attributes[0]['value_id'] . "'";
@@ -747,7 +761,7 @@ class rakuten_checkout
                             quantity_unit_id = '" . (int)$order->products[$i]['quantity_unit_id'] . "',
                             unit_name = '" . xtc_db_input($order->products[$i]['unit_name']) . "'");
                 }
-                
+
                 $specials_result = xtc_db_query("SELECT products_id, specials_quantity from " . TABLE_SPECIALS . " WHERE products_id = '" . xtc_get_prid($order->products[$i]['id']) . "' ");
                 if (xtc_db_num_rows($specials_result)) {
                     $spq = xtc_db_fetch_array($specials_result);
@@ -756,11 +770,11 @@ class rakuten_checkout
 
                     if ($new_sp_quantity >= 1) {
                         xtc_db_query("update " . TABLE_SPECIALS . " set specials_quantity = '" . $new_sp_quantity . "' where products_id = '" . xtc_get_prid($order->products[$i]['id']) . "' ");
-                    } elseif (STOCK_CHECK == 'true') { 
+                    } elseif (STOCK_CHECK == 'true') { // BOF GM_MOD:
                         xtc_db_query("update " . TABLE_SPECIALS . " set status = '0', specials_quantity = '" . $new_sp_quantity . "' where products_id = '" . xtc_get_prid($order->products[$i]['id']) . "' ");
                     }
                 }
-                
+
                 if (isset ($order->products[$i]['attributes'])) {
                     $attributes_exist = '1';
                     for ($j = 0, $n2 = sizeof($order->products[$i]['attributes']); $j < $n2; $j++) {
@@ -848,7 +862,7 @@ class rakuten_checkout
                         }
                     }
                 }
-                
+
                 $total_weight += ($order->products[$i]['qty'] * $order->products[$i]['weight']);
                 $total_cost += $total_products_price;
             }
@@ -932,10 +946,10 @@ class rakuten_checkout
             unset ($_SESSION['nvpReqArray']);
             unset ($_SESSION['reshash']);
             $last_order = $insert_id;
-            
+
             if (isset ($_SESSION['credit_covers']))
                 unset ($_SESSION['credit_covers']);
-            
+
         } catch (Exception $e) {
             throw $e;
         }
